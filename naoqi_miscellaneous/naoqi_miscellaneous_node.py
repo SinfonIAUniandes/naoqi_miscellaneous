@@ -6,6 +6,7 @@ import sys
 
 from std_srvs.srv import SetBool
 from std_msgs.msg import Float32
+from naoqi_utilities_msgs.msg import LedParameters
 
 class NaoqiMiscellaneousNode(Node):
     """
@@ -25,6 +26,7 @@ class NaoqiMiscellaneousNode(Node):
             self.al_battery = session.service("ALBattery")
             self.al_autonomous_blinking = session.service("ALAutonomousBlinking")
             self.al_robot_posture = session.service("ALRobotPosture")
+            self.al_leds = session.service("ALLeds")
             self.get_logger().info("NAOqi service clients obtained successfully.")
         except Exception as e:
             self.get_logger().error(f"Could not connect to NAOqi services: {e}")
@@ -53,12 +55,37 @@ class NaoqiMiscellaneousNode(Node):
             self.toggle_blinking_callback
         )
 
-        # --- ROS2 Publishers ---
+        # --- ROS2 Publishers and Subscribers ---
         # ALBatteryService
-        self.battery_publisher = self.create_publisher(Float32, '~/battery_percentage', 10)
+        self.battery_publisher = self.create_publisher(Float32, '/battery_percentage', 10)
         self.battery_timer = self.create_timer(5.0, self.publish_battery_percentage) # Publish every 5 seconds
 
+        # ALLeds
+        self.leds_subscriber = self.create_subscription(
+            LedParameters,
+            '/set_leds',
+            self.leds_callback,
+            10
+        )
+
         self.get_logger().info("Miscellaneous functionalities node is ready.")
+
+    def leds_callback(self, msg):
+        """
+        Callback to set the color of an LED or group of LEDs.
+        """
+        try:
+            # Normalize color values from 0-255 to 0.0-1.0
+            red = msg.red / 255.0
+            green = msg.green / 255.0
+            blue = msg.blue / 255.0
+            
+            self.get_logger().info(f"Setting LED '{msg.name}' to color ({red:.2f}, {green:.2f}, {blue:.2f}) over {msg.duration}s.")
+            
+            # The fadeRGB function is non-blocking
+            self.al_leds.fadeRGB(msg.name, red, green, blue, msg.duration)
+        except Exception as e:
+            self.get_logger().error(f"Could not set LED '{msg.name}': {e}")
 
     def set_autonomous_state_callback(self, request, response):
         """
