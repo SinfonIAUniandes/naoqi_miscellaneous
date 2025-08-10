@@ -99,8 +99,10 @@ class NaoqiMiscellaneousNode(Node):
                 self.al_autonomous_life.setState("interactive")
                 response.message = "Autonomous life enabled."
             else:
-                self.al_autonomous_life.setState("disabled")
-                self.al_robot_posture.goToPosture("Stand", 0.5)
+                if self.al_autonomous_life.getState() != "disabled":
+                    self.al_autonomous_life.setState("disabled")
+                    rclpy.sleep(2)  # To avoid robot arm bug
+                    self.al_robot_posture.goToPosture("Stand", 0.5)
                 response.message = "Autonomous life disabled."
             response.success = True
         except Exception as e:
@@ -131,36 +133,6 @@ class NaoqiMiscellaneousNode(Node):
         except Exception as e:
             response.success = False
             response.message = f"Error changing basic awareness state: {e}"
-            self.get_logger().error(response.message)
-        return response
-
-    def pause_awareness_callback(self, request, response):
-        """
-        Callback to pause basic awareness.
-        """
-        try:
-            self.get_logger().info("Request to pause basic awareness.")
-            self.al_basic_awareness.pauseAwareness()
-            response.success = True
-            response.message = "Basic awareness paused."
-        except Exception as e:
-            response.success = False
-            response.message = f"Error pausing basic awareness: {e}"
-            self.get_logger().error(response.message)
-        return response
-
-    def resume_awareness_callback(self, request, response):
-        """
-        Callback to resume basic awareness.
-        """
-        try:
-            self.get_logger().info("Request to resume basic awareness.")
-            self.al_basic_awareness.resumeAwareness()
-            response.success = True
-            response.message = "Basic awareness resumed."
-        except Exception as e:
-            response.success = False
-            response.message = f"Error resuming basic awareness: {e}"
             self.get_logger().error(response.message)
         return response
 
