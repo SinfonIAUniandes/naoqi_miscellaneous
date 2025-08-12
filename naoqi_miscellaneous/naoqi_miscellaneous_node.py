@@ -3,6 +3,7 @@ from rclpy.node import Node
 import qi
 import argparse
 import sys
+import time
 
 from std_srvs.srv import SetBool
 from std_msgs.msg import Float32
@@ -101,7 +102,7 @@ class NaoqiMiscellaneousNode(Node):
             else:
                 if self.al_autonomous_life.getState() != "disabled":
                     self.al_autonomous_life.setState("disabled")
-                    rclpy.sleep(2)  # To avoid robot arm bug
+                    time.sleep(2)  # To avoid robot arm bug
                     self.al_robot_posture.goToPosture("Stand", 0.5)
                 response.message = "Autonomous life disabled."
             response.success = True
