@@ -58,13 +58,13 @@ class NaoqiMiscellaneousNode(Node):
 
         # --- ROS2 Publishers and Subscribers ---
         # ALBatteryService
-        self.battery_publisher = self.create_publisher(Float32, '/battery_percentage', 10)
+        self.battery_publisher = self.create_publisher(Float32, 'battery_percentage', 10)
         self.battery_timer = self.create_timer(5.0, self.publish_battery_percentage) # Publish every 5 seconds
 
         # ALLeds
         self.leds_subscriber = self.create_subscription(
             LedParameters,
-            '/set_leds',
+            'set_leds',
             self.leds_callback,
             10
         )
