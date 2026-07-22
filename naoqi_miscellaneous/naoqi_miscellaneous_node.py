@@ -13,21 +13,19 @@ class NaoqiMiscellaneousNode(Node):
     """
     ROS2 Node to manage miscellaneous functionalities of a NAO robot.
     """
-    def __init__(self, session):
+    def __init__(self, session, robot_url=None):
         """
         Initializes the node, NAOqi service clients, and ROS2 services and publishers.
         """
         super().__init__('naoqi_miscellaneous_node')
         self.get_logger().info("Initializing NaoqiMiscellaneousNode...")
+        self.session = session
+        self.robot_url = robot_url
+        self.battery_warning_count = 0
 
         # --- NAOqi Service Clients ---
         try:
-            self.al_autonomous_life = session.service("ALAutonomousLife")
-            self.al_basic_awareness = session.service("ALBasicAwareness")
-            self.al_battery = session.service("ALBattery")
-            self.al_autonomous_blinking = session.service("ALAutonomousBlinking")
-            self.al_robot_posture = session.service("ALRobotPosture")
-            self.al_leds = session.service("ALLeds")
+            self._refresh_naoqi_services()
             self.get_logger().info("NAOqi service clients obtained successfully.")
         except Exception as e:
             self.get_logger().error(f"Could not connect to NAOqi services: {e}")
@@ -38,21 +36,21 @@ class NaoqiMiscellaneousNode(Node):
         # ALAutonomousLife
         self.set_autonomous_state_service = self.create_service(
             SetBool,
-            '~/set_autonomous_state',
+            'set_autonomous_state',
             self.set_autonomous_state_callback
         )
 
         # ALBasicAwareness
         self.toggle_awareness_service = self.create_service(
             SetBool,
-            '~/toggle_awareness',
+            'toggle_awareness',
             self.toggle_awareness_callback
         )
 
         # ALAutonomousBlinking
         self.toggle_blinking_service = self.create_service(
             SetBool,
-            '~/toggle_blinking',
+            'toggle_blinking',
             self.toggle_blinking_callback
         )
 
@@ -70,6 +68,37 @@ class NaoqiMiscellaneousNode(Node):
         )
 
         self.get_logger().info("Miscellaneous functionalities node is ready.")
+
+    def _ensure_session_connected(self):
+        if self.session.isConnected():
+            return True
+        if not self.robot_url:
+            return False
+        self.get_logger().warn("NAOqi session is disconnected. Attempting to reconnect...")
+        try:
+            self.session.close()
+        except Exception:
+            pass
+        try:
+            self.session.connect(self.robot_url)
+            self.get_logger().info("NAOqi session reconnected.")
+            return True
+        except Exception as e:
+            self.get_logger().warn(f"Could not reconnect NAOqi session: {e}")
+            return False
+
+    def _service(self, name):
+        if not self._ensure_session_connected():
+            raise RuntimeError("NAOqi session is not connected")
+        return self.session.service(name)
+
+    def _refresh_naoqi_services(self):
+        self.al_autonomous_life = self._service("ALAutonomousLife")
+        self.al_basic_awareness = self._service("ALBasicAwareness")
+        self.al_battery = self._service("ALBattery")
+        self.al_autonomous_blinking = self._service("ALAutonomousBlinking")
+        self.al_robot_posture = self._service("ALRobotPosture")
+        self.al_leds = self._service("ALLeds")
 
     def leds_callback(self, msg):
         """
@@ -158,12 +187,26 @@ class NaoqiMiscellaneousNode(Node):
         Gets the battery charge and publishes it as a percentage.
         """
         try:
-            charge = self.al_battery.getBatteryCharge()
+            charge = self._read_battery_charge()
             msg = Float32()
             msg.data = float(charge)
             self.battery_publisher.publish(msg)
         except Exception as e:
-            self.get_logger().warn(f"Could not get battery state: {e}")
+            self.battery_warning_count += 1
+            if self.battery_warning_count == 1 or self.battery_warning_count % 12 == 0:
+                self.get_logger().warn(f"Could not get battery state: {e}")
+
+    def _read_battery_charge(self):
+        try:
+            charge = self.al_battery.getBatteryCharge()
+            self.battery_warning_count = 0
+            return charge
+        except Exception as first_error:
+            self.get_logger().warn(f"Battery service read failed. Refreshing NAOqi service proxy: {first_error}")
+            self.al_battery = self._service("ALBattery")
+            charge = self.al_battery.getBatteryCharge()
+            self.battery_warning_count = 0
+            return charge
 
 
 def main(args=None):
@@ -178,14 +221,15 @@ def main(args=None):
     parsed_args, _ = parser.parse_known_args(args=sys.argv[1:])
 
     session = qi.Session()
+    robot_url = f"tcp://{parsed_args.ip}:{parsed_args.port}"
     try:
-        session.connect(f"tcp://{parsed_args.ip}:{parsed_args.port}")
+        session.connect(robot_url)
     except RuntimeError:
         print(f"Can't connect to Naoqi at ip \"{parsed_args.ip}\" on port {parsed_args.port}.\n"
               "Please check your script arguments. Run with -h option for help.")
         sys.exit(1)
 
-    naoqi_miscellaneous_node = NaoqiMiscellaneousNode(session)
+    naoqi_miscellaneous_node = NaoqiMiscellaneousNode(session, robot_url)
 
     try:
         rclpy.spin(naoqi_miscellaneous_node)
